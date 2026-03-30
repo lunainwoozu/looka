@@ -18,6 +18,12 @@ function requireApiKey(_req: Request, res: Response, next: NextFunction): void {
 
 router.use(requireApiKey);
 
+function parsePositiveInt(value: unknown, fallback: number): number {
+  const n = typeof value === 'string' ? Number(value) : NaN;
+  if (!Number.isFinite(n) || n <= 0) return fallback;
+  return Math.floor(n);
+}
+
 /** GET /api/tmdb/genres/movie — 영화 장르 목록 */
 router.get('/genres/movie', async (req, res, next) => {
   try {
@@ -53,6 +59,45 @@ router.get('/movies/search', async (req, res, next) => {
         include_adult: includeAdult,
       },
     });
+    res.json(data);
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** GET /api/tmdb/movies/discover — 전역 후보(취향 바깥 포함) 탐색 */
+router.get('/movies/discover', async (req, res, next) => {
+  try {
+    const language = typeof req.query.language === 'string' ? req.query.language : 'ko-KR';
+    const page = Math.min(parsePositiveInt(req.query.page, 1), 500);
+    const includeAdult = req.query.include_adult === 'true';
+    const sortBy =
+      typeof req.query.sort_by === 'string' && req.query.sort_by.trim()
+        ? req.query.sort_by.trim()
+        : 'popularity.desc';
+    const withGenres =
+      typeof req.query.with_genres === 'string' && req.query.with_genres.trim()
+        ? req.query.with_genres.trim()
+        : undefined;
+    const withoutGenres =
+      typeof req.query.without_genres === 'string' && req.query.without_genres.trim()
+        ? req.query.without_genres.trim()
+        : undefined;
+    const voteCountGte = parsePositiveInt(req.query.vote_count_gte, 120);
+
+    const client = getTmdbClient();
+    const { data } = await client.get('/discover/movie', {
+      params: {
+        language,
+        page,
+        include_adult: includeAdult,
+        sort_by: sortBy,
+        with_genres: withGenres,
+        without_genres: withoutGenres,
+        'vote_count.gte': voteCountGte,
+      },
+    });
+
     res.json(data);
   } catch (err) {
     next(err);
