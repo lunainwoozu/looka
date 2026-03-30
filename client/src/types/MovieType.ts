@@ -39,6 +39,7 @@ export type CandidatePayload = {
   directors?: { id: number }[];
   cast?: { id: number }[];
   production_countries?: { iso_3166_1: string }[];
+  keywords?: { id: number }[];
 };
 
 export type UserMoviePayload = {

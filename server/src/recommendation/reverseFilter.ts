@@ -1,11 +1,9 @@
-/**
- * 역추천(취향 바깥) 후보 필터링 — 도전 강도에 따라 조건 분기
- */
-
 export const REVERSE_FILTER_MIN_VOTE = 6.0;
 export const REVERSE_FILTER_MAX_RESULTS = 20;
 
-/** 유저가 온보딩에서 고른 영화 한 편 (TMDB 상세 기준 메타) */
+/** 키워드 겹침 비율 임계값 — 후보 키워드의 50% 이상이 유저 pool과 겹치면 Tier 3 탈락 */
+const KEYWORD_OVERLAP_THRESHOLD = 0.5;
+
 export type UserMovieInput = {
   id: number;
   directors?: { id: number }[];
@@ -14,7 +12,6 @@ export type UserMovieInput = {
   production_countries?: { iso_3166_1: string }[];
 };
 
-/** TMDB 목록/검색/상세에서 올 수 있는 후보 영화 형태 */
 export type CandidateMovie = {
   id: number;
   vote_average?: number;
@@ -22,6 +19,7 @@ export type CandidateMovie = {
   genres?: { id: number }[];
   directors?: { id: number }[];
   cast?: { id: number }[];
+  keywords?: { id: number }[]; // ✅ 추가
   production_countries?: { iso_3166_1: string }[];
 };
 
@@ -51,41 +49,24 @@ export function getCandidateGenreIds(m: CandidateMovie): number[] {
 
 function buildUserPools(userMovies: UserMovieInput[]) {
   const directorIds = new Set<number>();
-  const castIds = new Set<number>();
-  const countryCodes = new Set<string>();
+  const keywordIds = new Set<number>(); // ✅ 추가, countryCodes 제거
 
   for (const m of userMovies) {
     m.directors?.forEach((d) => directorIds.add(d.id));
-    m.cast?.forEach((c) => castIds.add(c.id));
-    m.production_countries?.forEach((c) => countryCodes.add(c.iso_3166_1));
+    m.keywords?.forEach((k) => keywordIds.add(k.id)); // ✅ 추가
   }
 
-  return { directorIds, castIds, countryCodes };
+  return { directorIds, keywordIds };
 }
 
-/** 편안한 확장(1단): 감독·출연·국가 중 하나라도 유저 풀과 다르면 통과 */
-function passesComfortableTier(
-  m: CandidateMovie,
-  pools: ReturnType<typeof buildUserPools>
-): boolean {
+/** Tier 1 — 장르는 겹쳐도 되고, 감독만 새로우면 통과 */
+function passesComfortableTier(m: CandidateMovie, userDirectorIds: Set<number>): boolean {
   const dirs = m.directors ?? [];
-  const casts = m.cast ?? [];
-  const countries = m.production_countries ?? [];
-
-  const poolEmpty =
-    pools.directorIds.size === 0 && pools.castIds.size === 0 && pools.countryCodes.size === 0;
-  if (poolEmpty) {
-    return true;
-  }
-
-  const hasNewDirector = dirs.some((d) => !pools.directorIds.has(d.id));
-  const hasNewCast = casts.some((c) => !pools.castIds.has(c.id));
-  const hasNewCountry = countries.some((c) => !pools.countryCodes.has(c.iso_3166_1));
-
-  return hasNewDirector || hasNewCast || hasNewCountry;
+  if (dirs.length === 0) return true;
+  return dirs.some((d) => !userDirectorIds.has(d.id));
 }
 
-/** 중간(2단): 장르가 하나 이상 달라야 하고(유저 장르 집합에 없는 장르가 후보에 있음), 감독은 유저와 겹치면 안 됨 */
+/** Tier 2 — 장르 하나 이상 이탈 + 감독 완전히 새로워야 함 */
 function passesMiddleTier(
   m: CandidateMovie,
   userGenreSet: Set<number>,
@@ -96,27 +77,38 @@ function passesMiddleTier(
   if (!hasGenreOutsideUser) return false;
 
   const dirs = m.directors ?? [];
-  if (dirs.length === 0) {
-    return userDirectorIds.size === 0;
-  }
-  const sharesDirectorWithUser = dirs.some((d) => userDirectorIds.has(d.id));
-  return !sharesDirectorWithUser;
+  if (dirs.length === 0) return true;
+  return !dirs.some((d) => userDirectorIds.has(d.id));
 }
 
-/** 진짜 도전(3단): 유저가 고른 장르와 한 건도 겹치지 않음 */
-function passesHardTier(m: CandidateMovie, userGenreSet: Set<number>): boolean {
+/** Tier 3 — 장르 완전 이탈 + 키워드 겹침 비율이 임계값 미만이어야 함 */
+function passesHardTier(
+  m: CandidateMovie,
+  userGenreSet: Set<number>,
+  userKeywordIds: Set<number>
+): boolean {
   const gids = getCandidateGenreIds(m);
   if (gids.length === 0) return false;
-  return !gids.some((g) => userGenreSet.has(g));
+  if (gids.some((g) => userGenreSet.has(g))) return false;
+
+  // 키워드 겹침 체크
+  // 유저 keyword pool이 없으면 키워드 조건은 스킵
+  if (userKeywordIds.size > 0) {
+    const keywords = m.keywords ?? [];
+    if (keywords.length > 0) {
+      const overlapCount = keywords.filter((k) => userKeywordIds.has(k.id)).length;
+      const overlapRatio = overlapCount / keywords.length;
+      if (overlapRatio >= KEYWORD_OVERLAP_THRESHOLD) return false;
+    }
+  }
+
+  return true;
 }
 
 function passesVote(m: CandidateMovie): boolean {
   return typeof m.vote_average === 'number' && m.vote_average >= REVERSE_FILTER_MIN_VOTE;
 }
 
-/**
- * 역추천 조건을 만족하는 후보만 남기고, 평점 내림차순으로 최대 20개 반환.
- */
 export function filterReverseCandidates(input: ReverseFilterInput): CandidateMovie[] {
   const { userGenres, userMovies, challengeLevel, candidateMovies } = input;
   const tier = tierFromLevel(challengeLevel);
@@ -128,16 +120,12 @@ export function filterReverseCandidates(input: ReverseFilterInput): CandidateMov
     if (userMovieIds.has(m.id)) return false;
     if (!passesVote(m)) return false;
 
-    if (tier === 1) return passesComfortableTier(m, pools);
+    if (tier === 1) return passesComfortableTier(m, pools.directorIds);
     if (tier === 2) return passesMiddleTier(m, userGenreSet, pools.directorIds);
-    return passesHardTier(m, userGenreSet);
+    return passesHardTier(m, userGenreSet, pools.keywordIds);
   });
 
-  const sorted = [...filtered].sort((a, b) => {
-    const va = a.vote_average ?? 0;
-    const vb = b.vote_average ?? 0;
-    return vb - va;
-  });
-
-  return sorted.slice(0, REVERSE_FILTER_MAX_RESULTS);
+  return [...filtered]
+    .sort((a, b) => (b.vote_average ?? 0) - (a.vote_average ?? 0))
+    .slice(0, REVERSE_FILTER_MAX_RESULTS);
 }

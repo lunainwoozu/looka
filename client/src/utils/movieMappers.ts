@@ -23,5 +23,6 @@ export function detailToCandidate(d: MovieDetail): CandidatePayload {
     directors: d.directors.map(({ id }) => ({ id })),
     cast: d.cast.map(({ id }) => ({ id })),
     production_countries: d.productionCountries.map((c) => ({ iso_3166_1: c.iso_3166_1 })),
+    keywords: d.keywords?.map(({ id }) => ({ id })) ?? [],
   };
 }
