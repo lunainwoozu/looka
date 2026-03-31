@@ -3,7 +3,10 @@ import { fileURLToPath } from 'node:url';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import express, { type NextFunction, type Request, type Response } from 'express';
-import mysql from 'mysql2/promise';
+import passport from 'passport';
+import { setupGooglePassportStrategy } from './auth/passport.js';
+import { getPool } from './db/pool.js';
+import authRouter from './routes/auth.js';
 import recommendRouter from './routes/recommend.js';
 import tmdbRouter from './routes/tmdb.js';
 
@@ -14,34 +17,15 @@ dotenv.config();
 const app = express();
 const port = Number(process.env.PORT) || 3001;
 
+setupGooglePassportStrategy();
+
 app.use(cors({ origin: true }));
 app.use(express.json());
+app.use(passport.initialize());
 
+app.use('/api/auth', authRouter);
 app.use('/api/tmdb', tmdbRouter);
 app.use('/api/recommend', recommendRouter);
-
-let pool: mysql.Pool | null = null;
-
-function getPool(): mysql.Pool | null {
-  const host = process.env.MYSQL_HOST;
-  const user = process.env.MYSQL_USER;
-  const password = process.env.MYSQL_PASSWORD;
-  const database = process.env.MYSQL_DATABASE;
-  if (!host || !user || !database) {
-    return null;
-  }
-  if (!pool) {
-    pool = mysql.createPool({
-      host,
-      user,
-      password: password ?? '',
-      database,
-      waitForConnections: true,
-      connectionLimit: 10,
-    });
-  }
-  return pool;
-}
 
 app.get('/api/health', async (_req, res) => {
   const p = getPool();
