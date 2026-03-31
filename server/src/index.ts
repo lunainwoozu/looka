@@ -17,7 +17,29 @@ dotenv.config();
 const app = express();
 const port = Number(process.env.PORT) || 3001;
 
+function parseTrustProxy(value: string | undefined): boolean | number | string | string[] {
+  if (!value) return false;
+
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'true') return true;
+  if (normalized === 'false') return false;
+
+  const asNumber = Number(normalized);
+  if (Number.isInteger(asNumber) && asNumber >= 0) {
+    return asNumber;
+  }
+
+  const list = value
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  return list.length > 1 ? list : value.trim();
+}
+
 setupGooglePassportStrategy();
+
+app.set('trust proxy', parseTrustProxy(process.env.TRUST_PROXY));
 
 app.use(cors({ origin: true }));
 app.use(express.json());
