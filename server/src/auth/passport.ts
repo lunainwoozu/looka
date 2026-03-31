@@ -142,7 +142,7 @@ export function setupGooglePassportStrategy(): void {
           }
 
           const profileEmailVerified = (profile._json as { email_verified?: unknown }).email_verified;
-          if (profileEmailVerified === false) {
+          if (profileEmailVerified !== true) {
             done(new Error('Google profile email is not verified'));
             return;
           }
