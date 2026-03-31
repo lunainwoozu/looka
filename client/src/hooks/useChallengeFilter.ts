@@ -67,7 +67,7 @@ export function useChallengeFilter() {
 
         if (!candidateIds.length) {
           throw new Error(
-            '전역 후보 풀을 만들지 못했습니다. 도전 강도나 장르를 바꿔서 다시 시도해 주세요.'
+            '추천 후보 목록을 만들지 못했습니다. 도전 강도나 장르를 바꿔서 다시 시도해 주세요.'
           );
         }
 

@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import './App.css';
 import GenreStep from './components/steps/GenreStep';
 import MovieSelectionStep from './components/steps/MovieSelectionStep';
@@ -51,7 +52,9 @@ export default function App() {
   return (
     <div className="app">
       <header className="app__header">
-        <h1>Looka</h1>
+        <h1>
+          <Link to="/">Looka</Link>
+        </h1>
       </header>
 
       <section className="panel">
