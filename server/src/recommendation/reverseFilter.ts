@@ -49,11 +49,11 @@ export function getCandidateGenreIds(m: CandidateMovie): number[] {
 
 function buildUserPools(userMovies: UserMovieInput[]) {
   const directorIds = new Set<number>();
-  const keywordIds = new Set<number>(); // ✅ 추가, countryCodes 제거
+  const keywordIds = new Set<number>();
 
   for (const m of userMovies) {
     m.directors?.forEach((d) => directorIds.add(d.id));
-    m.keywords?.forEach((k) => keywordIds.add(k.id)); // ✅ 추가
+    m.keywords?.forEach((k) => keywordIds.add(k.id));
   }
 
   return { directorIds, keywordIds };
